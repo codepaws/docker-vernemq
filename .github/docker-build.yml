@@ -1,0 +1,64 @@
+name: Build VerneMQ Image
+
+on:
+  push:
+    branches: [ "main" ]
+    tags: [ "v*" ]
+  pull_request:
+    branches: [ "main" ]
+  workflow_dispatch: {}
+
+env:
+  REGISTRY: ghcr.io
+  # github.repository will be "codepaws/docker-vernemq" (or whatever your repo is named)
+  IMAGE_NAME: ${{ github.repository }}
+
+jobs:
+  build-and-push:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      # Setup Buildx (Still needed for advanced caching)
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      # Login to GitHub Container Registry
+      - name: Log in to the Container registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      # Generate tags (latest, edge, v2.1.2) automatically
+      - name: Extract Docker metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          tags: |
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=edge,branch=main
+
+      # Build and Push (Native x86_64)
+      - name: Build and push Docker image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          push: ${{ github.event_name != 'pull_request' }}
+          # Explicitly set to amd64 (x86_64) to prevent ambiguity
+          platforms: linux/amd64
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          # Use GitHub Actions Caching to speed up Erlang compilation
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          build-args: |
+            VERNEMQ_VERSION=2.1.2
