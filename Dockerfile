@@ -14,7 +14,7 @@ RUN git clone https://github.com/vernemq/vernemq.git . \
  && git submodule update --init --recursive
 RUN make rel
 
-==============================================================================
+# ==============================================================================
 # STAGE 2: RUNTIME (Keep this identical to Upstream where possible)
 # ==============================================================================
 FROM debian:bookworm-slim
