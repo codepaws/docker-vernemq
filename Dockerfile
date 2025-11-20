@@ -1,3 +1,22 @@
+# ==============================================================================
+# STAGE 1: BUILDER
+# ==============================================================================
+FROM erlang:27-slim AS build
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    git build-essential libsnappy-dev libssl-dev libncurses-dev ca-certificates cmake \
+ && rm -rf /var/lib/apt/lists/*
+
+ARG VERNEMQ_VERSION=2.1.2
+WORKDIR /vernemq-src
+RUN git clone https://github.com/vernemq/vernemq.git . \
+ && git checkout "${VERNEMQ_VERSION}" \
+ && git submodule update --init --recursive
+RUN make rel
+
+==============================================================================
+# STAGE 2: RUNTIME (Keep this identical to Upstream where possible)
+# ==============================================================================
 FROM debian:bookworm-slim
 
 RUN apt-get update && \
@@ -17,15 +36,14 @@ COPY --chown=10000:10000 bin/vernemq.sh /usr/sbin/start_vernemq
 COPY --chown=10000:10000 bin/join_cluster.sh /usr/sbin/join_cluster
 COPY --chown=10000:10000 files/vm.args /vernemq/etc/vm.args
 
-# Note that the following copies a binary package under EULA (requiring a paid subscription).
-RUN ARCH=$(uname -m | sed -e 's/aarch64/arm64/') && \
-    curl -L https://github.com/vernemq/vernemq/releases/download/$VERNEMQ_VERSION/vernemq-$VERNEMQ_VERSION.bookworm.$ARCH.tar.gz -o /tmp/vernemq-$VERNEMQ_VERSION.bookworm.tar.gz && \
-    tar -xzvf /tmp/vernemq-$VERNEMQ_VERSION.bookworm.tar.gz && \
-    rm /tmp/vernemq-$VERNEMQ_VERSION.bookworm.tar.gz && \
-    chown -R 10000:10000 /vernemq && \
-    ln -s /vernemq/etc /etc/vernemq && \
+# Copy VerneMQ build from previous stage
+COPY --from=build --chown=10000:10000 /vernemq-src/_build/default/rel/vernemq /vernemq
+
+# 5. Setup Symlinks (Required for Helm paths)
+RUN ln -s /vernemq/etc /etc/vernemq && \
     ln -s /vernemq/data /var/lib/vernemq && \
-    ln -s /vernemq/log /var/log/vernemq
+    ln -s /vernemq/log /var/log/vernemq && \
+    chmod +x /usr/sbin/start_vernemq /usr/sbin/join_cluster
 
 # Ports
 # 1883  MQTT
@@ -38,7 +56,6 @@ RUN ARCH=$(uname -m | sed -e 's/aarch64/arm64/') && \
 
 EXPOSE 1883 8883 8080 44053 4369 8888 \
        9100 9101 9102 9103 9104 9105 9106 9107 9108 9109
-
 
 VOLUME ["/vernemq/log", "/vernemq/data", "/vernemq/etc"]
 

@@ -5,8 +5,8 @@
 replicaCount: 1
 
 image:
-  repository: vernemq/vernemq
-  tag: 2.1.1-alpine
+  repository: ghcr.io/codepaws/vernemq
+  tag: latest
 
   pullPolicy: IfNotPresent
 
